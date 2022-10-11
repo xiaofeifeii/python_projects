@@ -6,6 +6,7 @@ import queue
 import struct
 import sys
 import time
+import redis
 
 import numpy as np
 from opcua import Client
@@ -14,6 +15,26 @@ from opcua.common.type_dictionary_buider import get_ua_class
 set_param = False
 test_case = 'misc'
 sample_rate = 1000
+
+redis_ip = "127.0.0.1"
+redis_port = 6379
+redis_topic = "123"  # 123为消息发布主题
+
+
+def redis_send_msg(msag):
+    rc = redis.Redis(host=redis_ip, port=redis_port, decode_responses=True)
+    rc.publish(redis_topic, str(msag))
+    print(str(msag))
+
+
+def redis_send_msg(*msag):
+    rc = redis.Redis(host=redis_ip, port=redis_port, decode_responses=True)
+    msg = ""
+    for t in msag:
+        msg += str(t)
+    rc.publish(redis_topic, msg)
+    print(msg)
+
 
 try:
     opts, args = getopt.getopt(sys.argv[1:], 'sc:r:')
@@ -36,25 +57,25 @@ cli.connect()
 cli.load_type_definitions()
 
 if test_case == 'misc':
-    print('===========================')
-    print('Misc Test')
-    print('===========================')
+    redis_send_msg('===========================')
+    redis_send_msg('Misc Test')
+    redis_send_msg('===========================')
 
     misc_node = cli.nodes.objects.get_child(('2:EPUR', '2:Misc'))
     ver_node = misc_node.get_child('2:Version')
     ver = ver_node.get_value()
-    print(f'Firmware Version: {ver.Major}.{ver.Minor}.{ver.Release}')
-    print('Get Usage:', misc_node.call_method('2:GetUsage'))
-    print('Get Time:', misc_node.call_method('2:GetTime'))
+    redis_send_msg(f'Firmware Version: {ver.Major}.{ver.Minor}.{ver.Release}')
+    redis_send_msg('Get Usage:', misc_node.call_method('2:GetUsage'))
+    redis_send_msg('Get Time:', misc_node.call_method('2:GetTime'))
 
     if set_param:
         if misc_node.call_method('2:SetSN', b'EPU-R-0009'):
-            print('Set SN succeeded.')
+            redis_send_msg('Set SN succeeded.')
         else:
-            print('Set SN failed.')
+            redis_send_msg('Set SN failed.')
     sn_node = misc_node.get_child('2:SN')
     sn = sn_node.get_value().decode()
-    print('Get SN:', sn)
+    redis_send_msg('Get SN:', sn)
 
     if set_param:
         ts = get_ua_class('TimeStampStruct')()
@@ -65,28 +86,29 @@ if test_case == 'misc':
         ts.Hour = t.tm_hour
         ts.Minute = t.tm_min
         ts.Second = t.tm_sec
-        print('before:', time.time())
+        redis_send_msg('before:', time.time())
         ret = misc_node.call_method('2:SyncTime', ts)
-        print('after:', time.time())
+        redis_send_msg('after:', time.time())
         if ret:
-            print('Sync time succeeded.')
+            redis_send_msg('Sync time succeeded.')
         else:
-            print('Sync time failed.')
-        print('Get Time:', misc_node.call_method('2:GetTime'))
-    print('---------------------------')
+            redis_send_msg('Sync time failed.')
+        redis_send_msg('Get Time:', misc_node.call_method('2:GetTime'))
+    redis_send_msg('---------------------------')
 
 if test_case == 'rit':
-    print('===========================')
-    print('RIT Test')
-    print('===========================')
+    redis_send_msg('===========================')
+    redis_send_msg('RIT Test')
+    redis_send_msg('===========================')
     rit_node = cli.nodes.objects.get_child(('2:EPUR', '2:RIT'))
     rit_node.call_method('2:Send', b'\xFF\xFF\x06\x03' + b'Hello')
-    print('===========================')
+    redis_send_msg('===========================')
 
 if test_case == 'pump':
-    print('===========================')
-    print('Pump Test')
-    print('===========================')
+    redis_send_msg('===========================')
+    redis_send_msg('Pump Test')
+    redis_send_msg('===========================')
+
 
     class PumpSubHandler(object):
 
@@ -95,6 +117,7 @@ if test_case == 'pump':
 
         def datachange_notification(self, node, val, data):
             self.pump_measurements = val
+
 
     pump_node = cli.nodes.objects.get_child(('2:EPUR', '2:Pump'))
 
@@ -110,45 +133,46 @@ if test_case == 'pump':
     chn1.Channel = 1
     chn1.Line = 0
     if pump_node.call_method('2:SetChannels', chn0, chn1):
-        print('Set channels succeeded.')
+        redis_send_msg('Set channels succeeded.')
     else:
-        print('Set channels failed.')
-    print('---------------------------')
+        redis_send_msg('Set channels failed.')
+    redis_send_msg('---------------------------')
 
     if pump_node.call_method('2:SetCounts', 128, 32):
-        print('Set counts succeeded.')
+        redis_send_msg('Set counts succeeded.')
     else:
-        print('Set counts failed.')
-    print('Sleep 2 seconds for pump measurements update...')
+        redis_send_msg('Set counts failed.')
+    redis_send_msg('Sleep 2 seconds for pump measurements update...')
     time.sleep(2)
-    print('Pump measurements:', pump_handler.pump_measurements)
-    print('---------------------------')
+    redis_send_msg('Pump measurements:', pump_handler.pump_measurements)
+    redis_send_msg('---------------------------')
 
     if pump_node.call_method('2:ControlMeasurement', True):
-        print('Start pump measurement succeeded.')
+        redis_send_msg('Start pump measurement succeeded.')
     else:
-        print('Start pump measurement failed.')
-    print('---------------------------')
+        redis_send_msg('Start pump measurement failed.')
+    redis_send_msg('---------------------------')
 
     try:
         while True:
-            print('Pump measurements:', pump_handler.pump_measurements)
+            redis_send_msg('Pump measurements:', pump_handler.pump_measurements)
             time.sleep(1)
     except KeyboardInterrupt:
-        print('Keyboard interrupted, exiting...')
+        redis_send_msg('Keyboard interrupted, exiting...')
 
     if pump_node.call_method('2:ControlMeasurement', False):
-        print('Stop pump measurement succeeded.')
+        redis_send_msg('Stop pump measurement succeeded.')
     else:
-        print('Stop pump measurement failed.')
-    print('---------------------------')
+        redis_send_msg('Stop pump measurement failed.')
+    redis_send_msg('---------------------------')
 
-    print('===========================')
+    redis_send_msg('===========================')
 
 if test_case == 'cdl':
-    print('===========================')
-    print('CDL Test')
-    print('===========================')
+    redis_send_msg('===========================')
+    redis_send_msg('CDL Test')
+    redis_send_msg('===========================')
+
 
     class CDLSubHandler(object):
 
@@ -158,6 +182,7 @@ if test_case == 'cdl':
         def datachange_notification(self, node, val, data):
             self.cdl_state = val
 
+
     cdl_node = cli.nodes.objects.get_child(('2:EPUR', '2:CDL'))
 
     cdl_state_node = cdl_node.get_child('2:CDLStatus')
@@ -166,27 +191,27 @@ if test_case == 'cdl':
     cdl_handle = cdl_sub.subscribe_data_change(cdl_state_node)
 
     if cdl_node.call_method('2:ResetPos'):
-        print('Reset position succeeded.')
+        redis_send_msg('Reset position succeeded.')
     else:
-        print('Reset position failed.')
-    print('---------------------------')
+        redis_send_msg('Reset position failed.')
+    redis_send_msg('---------------------------')
 
     if cdl_node.call_method('2:Control', True):
-        print('CDL open succeeded.')
+        redis_send_msg('CDL open succeeded.')
     else:
-        print('CDL open failed.')
-    print('---------------------------')
+        redis_send_msg('CDL open failed.')
+    redis_send_msg('---------------------------')
 
     input('Press any key to continue...')
 
     if cdl_node.call_method('2:Control', False):
-        print('CDL close succeeded.')
+        redis_send_msg('CDL close succeeded.')
     else:
-        print('CDL close failed.')
-    print('---------------------------')
+        redis_send_msg('CDL close failed.')
+    redis_send_msg('---------------------------')
 
-    print('CDL sequence: '
-          'Open: 1s, Close: 2s, Open: 3s, Close: 4s, Open: 5s.')
+    redis_send_msg('CDL sequence: '
+                   'Open: 1s, Close: 2s, Open: 3s, Close: 4s, Open: 5s.')
     cdl_seq = b'\x01' * 1 + \
               b'\x00' * 2 + \
               b'\x01' * 3 + \
@@ -194,43 +219,44 @@ if test_case == 'cdl':
               b'\x01' * 5
 
     if cdl_node.call_method('2:DownloadSeq', cdl_seq):
-        print('Download sequence succeeded.')
+        redis_send_msg('Download sequence succeeded.')
     else:
-        print('Download sequence failed.')
-    print('---------------------------')
+        redis_send_msg('Download sequence failed.')
+    redis_send_msg('---------------------------')
 
     if cdl_node.call_method('2:CancelSeq'):
-        print('Cancel sequence succeeded.')
+        redis_send_msg('Cancel sequence succeeded.')
     else:
-        print('Cancel sequence failed.')
-    print('---------------------------')
+        redis_send_msg('Cancel sequence failed.')
+    redis_send_msg('---------------------------')
 
     input('Press any key to download & start again.')
-    print('------------------------')
+    redis_send_msg('------------------------')
 
     if cdl_node.call_method('2:DownloadSeq', cdl_seq):
-        print('Download sequence succeeded.')
+        redis_send_msg('Download sequence succeeded.')
     else:
-        print('Download sequence failed.')
-    print('---------------------------')
+        redis_send_msg('Download sequence failed.')
+    redis_send_msg('---------------------------')
 
     try:
         while True:
-            print('CDL state:', cdl_handler.cdl_state)
+            redis_send_msg('CDL state:', cdl_handler.cdl_state)
             time.sleep(1)
     except KeyboardInterrupt:
-        print('Keyboard interrupted, exiting...')
+        redis_send_msg('Keyboard interrupted, exiting...')
 
     if cdl_node.call_method('2:CancelSeq'):
-        print('Cancel sequence succeeded.')
+        redis_send_msg('Cancel sequence succeeded.')
     else:
-        print('Cancel sequence failed.')
-    print('---------------------------')
+        redis_send_msg('Cancel sequence failed.')
+    redis_send_msg('---------------------------')
 
 if test_case == 'mud':
-    print('===========================')
-    print('Mud Test')
-    print('===========================')
+    redis_send_msg('===========================')
+    redis_send_msg('Mud Test')
+    redis_send_msg('===========================')
+
 
     class MudSubHandler(object):
 
@@ -242,6 +268,7 @@ if test_case == 'mud':
                 if self.__data_queue.full():
                     self.__data_queue.get()
                 self.__data_queue.put_nowait(val)
+
 
     mud_node = cli.nodes.objects.get_child(('2:EPUR', '2:Mud'))
     mud_status_node = mud_node.get_child('2:DAQStatus')
@@ -255,19 +282,19 @@ if test_case == 'mud':
     np.set_printoptions(threshold=10)
 
     if mud_node.call_method('2:SetChannel', 0, 1, sample_rate):
-        print('Set channel setting succeeded.')
+        redis_send_msg('Set channel setting succeeded.')
     else:
-        print('Set channel setting failed.')
-    print('---------------------------')
+        redis_send_msg('Set channel setting failed.')
+    redis_send_msg('---------------------------')
 
     if mud_node.call_method('2:ControlDAQ', True):
-        print('Start DAQ succeeded.')
+        redis_send_msg('Start DAQ succeeded.')
     else:
-        print('Start DAQ failed.')
-    print('---------------------------')
+        redis_send_msg('Start DAQ failed.')
+    redis_send_msg('---------------------------')
 
-    print('DAQ status:', mud_status_node.get_value())
-    print('---------------------------')
+    redis_send_msg('DAQ status:', mud_status_node.get_value())
+    redis_send_msg('---------------------------')
 
     try:
         while True:
@@ -275,46 +302,47 @@ if test_case == 'mud':
                 wv_data = mud_queue.get(timeout=1)
                 if len(wv_data) >= 9:
                     tm = struct.unpack('<HBBBBB', wv_data[:7])
-                    print('%d-%02d-%02d %02d:%02d:%02d' % tm)
+                    redis_send_msg('%d-%02d-%02d %02d:%02d:%02d' % tm)
                     length, = struct.unpack('<H', wv_data[7:9])
                     wv_data = wv_data[9:]
                     if length > 0:
                         if len(wv_data) == (9 * length):
                             ai_data = np.frombuffer(wv_data[:8 * length], np.float32)
                             ai_data.resize(ai_data.size // 2, 2)
-                            print('Pressure data: %d samples per channel.' %
-                                  ai_data.shape[0])
-                            print(ai_data)
+                            redis_send_msg('Pressure data: %d samples per channel.' %
+                                           ai_data.shape[0])
+                            redis_send_msg(ai_data)
 
                             di_data = np.frombuffer(wv_data[8 * length:], np.uint8)
-                            print('DI data: %d samples.' % di_data.shape[0])
-                            print(di_data)
+                            redis_send_msg('DI data: %d samples.' % di_data.shape[0])
+                            redis_send_msg(di_data)
                         else:
-                            print('Waveform data receiving error.')
+                            redis_send_msg('Waveform data receiving error.')
                     else:
-                        print('No waveform data available.')
+                        redis_send_msg('No waveform data available.')
                 else:
-                    print('Mud get waveform data failed.')
+                    redis_send_msg('Mud get waveform data failed.')
 
-                print('------------------------')
+                redis_send_msg('------------------------')
             except queue.Empty:
                 pass
     except KeyboardInterrupt:
-        print('Keyboard interrupted, exiting...')
+        redis_send_msg('Keyboard interrupted, exiting...')
 
     if mud_node.call_method('2:ControlDAQ', False):
-        print('Stop DAQ succeeded.')
+        redis_send_msg('Stop DAQ succeeded.')
     else:
-        print('Stop DAQ failed.')
-    print('---------------------------')
+        redis_send_msg('Stop DAQ failed.')
+    redis_send_msg('---------------------------')
 
-    print('DAQ status:', mud_status_node.get_value())
-    print('---------------------------')
+    redis_send_msg('DAQ status:', mud_status_node.get_value())
+    redis_send_msg('---------------------------')
 
 if test_case == 'depth':
-    print('===========================')
-    print('Depth Test')
-    print('===========================')
+    redis_send_msg('===========================')
+    redis_send_msg('Depth Test')
+    redis_send_msg('===========================')
+
 
     class DepthSubHandler(object):
 
@@ -324,6 +352,7 @@ if test_case == 'depth':
         def datachange_notification(self, node, val, data):
             self.depth_measurements = val
 
+
     depth_node = cli.nodes.objects.get_child(('2:EPUR', '2:Depth'))
 
     depth_measurements_node = depth_node.get_child('2:DepthMeasurements')
@@ -332,10 +361,10 @@ if test_case == 'depth':
     depth_handle = depth_sub.subscribe_data_change(depth_measurements_node)
 
     if depth_node.call_method('2:SetMainChannel', 0, False):
-        print('Set main channel succeeded.')
+        redis_send_msg('Set main channel succeeded.')
     else:
-        print('Set main channel failed.')
-    print('---------------------------')
+        redis_send_msg('Set main channel failed.')
+    redis_send_msg('---------------------------')
 
     if set_param:
         main_table_counts = (0, 200, 888)
@@ -343,24 +372,24 @@ if test_case == 'depth':
         if depth_node.call_method('2:SetWireLengthCalibration',
                                   main_table_counts,
                                   main_table_lengths):
-            print('Set wire length calibration succeeded.')
+            redis_send_msg('Set wire length calibration succeeded.')
         else:
-            print('Set wire length calibration failed.')
-        print('---------------------------')
+            redis_send_msg('Set wire length calibration failed.')
+        redis_send_msg('---------------------------')
 
     depth_wire_length_cali_node = depth_node.get_child('2:WireLengthCalibration')
     depth_wire_length_cali_counts_node = depth_wire_length_cali_node.get_child('2:WireLengthCalibrationCounts')
     depth_wire_length_cali_lengths_node = depth_wire_length_cali_node.get_child('2:WireLengthCalibrationLengths')
-    print('Wire length calibration table:')
-    print('Counts:', depth_wire_length_cali_counts_node.get_value())
-    print('Lengths:', depth_wire_length_cali_lengths_node.get_value())
-    print('---------------------------')
+    redis_send_msg('Wire length calibration table:')
+    redis_send_msg('Counts:', depth_wire_length_cali_counts_node.get_value())
+    redis_send_msg('Lengths:', depth_wire_length_cali_lengths_node.get_value())
+    redis_send_msg('---------------------------')
 
     if depth_node.call_method('2:SetCompensatorChannel', 0, False):
-        print('Set compensator channel succeeded.')
+        redis_send_msg('Set compensator channel succeeded.')
     else:
-        print('Set compensator channel failed.')
-    print('---------------------------')
+        redis_send_msg('Set compensator channel failed.')
+    redis_send_msg('---------------------------')
 
     if set_param:
         cmp_table_counts = (0, 400)
@@ -368,24 +397,24 @@ if test_case == 'depth':
         if depth_node.call_method('2:SetCompensatorCalibration',
                                   cmp_table_counts,
                                   cmp_table_lengths):
-            print('Set compensator calibration succeeded.')
+            redis_send_msg('Set compensator calibration succeeded.')
         else:
-            print('Set compensator calibration failed.')
-        print('---------------------------')
+            redis_send_msg('Set compensator calibration failed.')
+        redis_send_msg('---------------------------')
 
     depth_compensator_cali_node = depth_node.get_child('2:CompensatorCalibration')
     depth_compensator_cali_counts_node = depth_compensator_cali_node.get_child('2:CompensatorCalibrationCounts')
     depth_compensator_cali_lengths_node = depth_compensator_cali_node.get_child('2:CompensatorCalibrationLengths')
-    print('Compensator calibration table:')
-    print('Counts:', depth_compensator_cali_counts_node.get_value())
-    print('Lengths:', depth_compensator_cali_lengths_node.get_value())
-    print('---------------------------')
+    redis_send_msg('Compensator calibration table:')
+    redis_send_msg('Counts:', depth_compensator_cali_counts_node.get_value())
+    redis_send_msg('Lengths:', depth_compensator_cali_lengths_node.get_value())
+    redis_send_msg('---------------------------')
 
     if depth_node.call_method('2:SetHookloadChannel', 2):
-        print('Set hookload channel succeeded.')
+        redis_send_msg('Set hookload channel succeeded.')
     else:
-        print('Set hookload channel failed.')
-    print('---------------------------')
+        redis_send_msg('Set hookload channel failed.')
+    redis_send_msg('---------------------------')
 
     if set_param:
         hl_table_currents = (5.55, 10.35)
@@ -393,139 +422,139 @@ if test_case == 'depth':
         if depth_node.call_method('2:SetHookloadCalibration',
                                   hl_table_currents,
                                   hl_table_loads):
-            print('Set hookload calibration succeeded.')
+            redis_send_msg('Set hookload calibration succeeded.')
         else:
-            print('Set hookload calibration failed.')
-        print('---------------------------')
+            redis_send_msg('Set hookload calibration failed.')
+        redis_send_msg('---------------------------')
 
     if depth_node.call_method('2:SetHookloadThreshold', 42):
-        print('Set hookload threshold succeeded.')
+        redis_send_msg('Set hookload threshold succeeded.')
     else:
-        print('Set hookload threshold failed.')
-    print('---------------------------')
+        redis_send_msg('Set hookload threshold failed.')
+    redis_send_msg('---------------------------')
 
     depth_hookload_cali_node = depth_node.get_child('2:HookloadCalibration')
     depth_hookload_cali_currents_node = depth_hookload_cali_node.get_child('2:HookloadCalibrationCurrents')
     depth_hookload_cali_loads_node = depth_hookload_cali_node.get_child('2:HookloadCalibrationLoads')
-    print('Hookload calibration table:')
-    print('Currents:', depth_hookload_cali_currents_node.get_value())
-    print('Loads:', depth_hookload_cali_loads_node.get_value())
-    print('---------------------------')
+    redis_send_msg('Hookload calibration table:')
+    redis_send_msg('Currents:', depth_hookload_cali_currents_node.get_value())
+    redis_send_msg('Loads:', depth_hookload_cali_loads_node.get_value())
+    redis_send_msg('---------------------------')
 
     if depth_node.call_method('2:SetSlipChannel', 2):
-        print('Set slip channel succeeded.')
+        redis_send_msg('Set slip channel succeeded.')
     else:
-        print('Set slip channel failed.')
-    print('---------------------------')
+        redis_send_msg('Set slip channel failed.')
+    redis_send_msg('---------------------------')
 
     if depth_node.call_method('2:SetInslipSource', 1):
-        print('Set in-slip source succeeded.')
+        redis_send_msg('Set in-slip source succeeded.')
     else:
-        print('Set in-slip source failed.')
-    print('---------------------------')
+        redis_send_msg('Set in-slip source failed.')
+    redis_send_msg('---------------------------')
 
     if set_param:
         if depth_node.call_method('2:SetL1L2', 3.45, 2.11):
-            print('Set L1 & L2 succeeded.')
+            redis_send_msg('Set L1 & L2 succeeded.')
         else:
-            print('Set L1 & L2 failed.')
-        print('---------------------------')
+            redis_send_msg('Set L1 & L2 failed.')
+        redis_send_msg('---------------------------')
 
     depth_compensation_node = depth_node.get_child('2:DepthCompensation')
     depth_l1_node = depth_compensation_node.get_child('2:DepthCompensationL1')
     depth_l2_node = depth_compensation_node.get_child('2:DepthCompensationL2')
-    print('L1:', depth_l1_node.get_value())
-    print('L2:', depth_l2_node.get_value())
-    print('---------------------------')
+    redis_send_msg('L1:', depth_l1_node.get_value())
+    redis_send_msg('L2:', depth_l2_node.get_value())
+    redis_send_msg('---------------------------')
 
     if depth_node.call_method('2:ResetOffset'):
-        print('Reset offset succeeded.')
+        redis_send_msg('Reset offset succeeded.')
     else:
-        print('Reset offset failed.')
-    print('---------------------------')
+        redis_send_msg('Reset offset failed.')
+    redis_send_msg('---------------------------')
 
     if set_param:
         if depth_node.call_method('2:SetCompensation', True, 1):
-            print('Set compensation succeeded.')
+            redis_send_msg('Set compensation succeeded.')
         else:
-            print('Set compensation failed.')
-        print('---------------------------')
+            redis_send_msg('Set compensation failed.')
+        redis_send_msg('---------------------------')
 
     depth_compensate_node = depth_compensation_node.get_child('2:DepthCompensationCompensate')
     depth_mode_node = depth_compensation_node.get_child('2:DepthCompensationMode')
-    print('compensate:', depth_compensate_node.get_value())
+    redis_send_msg('compensate:', depth_compensate_node.get_value())
     if depth_mode_node.get_value() == 0:
-        print('compensation mode: negative.')
+        redis_send_msg('compensation mode: negative.')
     else:
-        print('compensation mode: positive.')
-    print('---------------------------')
+        redis_send_msg('compensation mode: positive.')
+    redis_send_msg('---------------------------')
 
     if depth_node.call_method('2:SetBitDepth', 999):
-        print('Set bit depth succeeded.')
+        redis_send_msg('Set bit depth succeeded.')
     else:
-        print('Set bit depth failed.')
-    print('---------------------------')
+        redis_send_msg('Set bit depth failed.')
+    redis_send_msg('---------------------------')
 
     if depth_node.call_method('2:SetBlockHeight', 1):
-        print('Set block height succeeded.')
+        redis_send_msg('Set block height succeeded.')
     else:
-        print('Set block height failed.')
-    print('---------------------------')
+        redis_send_msg('Set block height failed.')
+    redis_send_msg('---------------------------')
 
     time.sleep(1)
 
-    print('block height:', depth_handler.depth_measurements)
-    print('---------------------------')
+    redis_send_msg('block height:', depth_handler.depth_measurements)
+    redis_send_msg('---------------------------')
 
     if depth_node.call_method('2:ZeroBlockHeight'):
-        print('Zero block height succeeded.')
+        redis_send_msg('Zero block height succeeded.')
     else:
-        print('Zero block height failed.')
-    print('---------------------------')
+        redis_send_msg('Zero block height failed.')
+    redis_send_msg('---------------------------')
 
     time.sleep(1)
 
-    print('block height:', depth_handler.depth_measurements)
-    print('---------------------------')
+    redis_send_msg('block height:', depth_handler.depth_measurements)
+    redis_send_msg('---------------------------')
 
     if set_param:
         if depth_node.call_method('2:SetTrackingFrequency', 10):
-            print('Set tracking frequency succeeded.')
+            redis_send_msg('Set tracking frequency succeeded.')
         else:
-            print('Set tracking frequency failed.')
-        print('---------------------------')
+            redis_send_msg('Set tracking frequency failed.')
+        redis_send_msg('---------------------------')
 
     depth_tracking_freq_node = depth_node.get_child('2:DepthTrackingFrequency')
-    print('tracking frequency:', depth_tracking_freq_node.get_value())
-    print('---------------------------')
+    redis_send_msg('tracking frequency:', depth_tracking_freq_node.get_value())
+    redis_send_msg('---------------------------')
 
     if depth_node.call_method('2:ControlTracking', True):
-        print('Start depth tracking succeeded.')
+        redis_send_msg('Start depth tracking succeeded.')
     else:
-        print('Start depth tracking failed.')
-    print('---------------------------')
+        redis_send_msg('Start depth tracking failed.')
+    redis_send_msg('---------------------------')
 
     depth_tracking_status_node = depth_node.get_child('2:DepthTrackingStatus')
-    print(depth_tracking_status_node.get_value())
-    print('---------------------------')
+    redis_send_msg(depth_tracking_status_node.get_value())
+    redis_send_msg('---------------------------')
 
     try:
         while True:
-            print(depth_handler.depth_measurements)
+            redis_send_msg(depth_handler.depth_measurements)
             time.sleep(1)
     except KeyboardInterrupt:
-        print('Keyboard interrupted, exiting...')
+        redis_send_msg('Keyboard interrupted, exiting...')
 
     if depth_node.call_method('2:ControlTracking', False):
-        print('Stop depth tracking succeeded.')
+        redis_send_msg('Stop depth tracking succeeded.')
     else:
-        print('Stop depth tracking failed.')
-    print('---------------------------')
+        redis_send_msg('Stop depth tracking failed.')
+    redis_send_msg('---------------------------')
 
-    print(depth_tracking_status_node.get_value())
-    print('---------------------------')
+    redis_send_msg(depth_tracking_status_node.get_value())
+    redis_send_msg('---------------------------')
 
-print('============================================================')
+redis_send_msg('============================================================')
 
 # embed()
 cli.disconnect()
