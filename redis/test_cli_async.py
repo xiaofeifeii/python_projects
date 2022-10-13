@@ -22,6 +22,8 @@ redis_port = 6379
 redis_topic = "ch1"  # 123为消息发布主题
 
 mub_flag = True
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
 
 rc = redis.Redis(host=redis_ip, port=redis_port, decode_responses=True)
 
@@ -46,15 +48,13 @@ def sub_handle(info):
     print(info)
     msg = info['data']
     cmd = msg.split("_")
-
+    loop.stop()
     if cmd[0] == "setChannel":
         c1 = cmd[1]
         c2 = cmd[2]
         print('receive success ' + c1 + " " + c2)
         mub_flag = True
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(mud(c1, c2, ))
+        loop.run_until_complete(mud(c1, c2))
     else:
         print("cmd match error")
 
@@ -371,9 +371,6 @@ if test_case == 'cdl':
     redis_send_msg('---------------------------')
 
 if test_case == 'mud':
-    # th_mud = threading.Thread(target=mud(0, 1))
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
     loop.run_until_complete(mud(0, 1))
 if test_case == 'depth':
     redis_send_msg('===========================')
