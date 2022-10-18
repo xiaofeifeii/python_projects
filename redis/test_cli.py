@@ -11,9 +11,7 @@ import redis
 import numpy as np
 from opcua import Client
 from opcua.common.type_dictionary_buider import get_ua_class
-import threading
-import socket
-import sys
+import asyncio
 
 set_param = False
 test_case = 'misc'
@@ -21,82 +19,52 @@ sample_rate = 1000
 
 redis_ip = "127.0.0.1"
 redis_port = 6379
-redis_topic = "123"  # 123为消息发布主题
+redis_topic = "ch1"
 
-RECV_BUF_SIZE = 256
-receive_count: int = 0
+mub_flag = True
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
 
+rc = redis.Redis(host=redis_ip, port=redis_port, decode_responses=True)
 
-def redis_send_msg(msag):
-    rc = redis.Redis(host=redis_ip, port=redis_port, decode_responses=True)
-    rc.publish(redis_topic, str(msag))
-    print(str(msag))
+c1 = 0
+c2 = 1
 
 
 def redis_send_msg(*msag):
-    rc = redis.Redis(host=redis_ip, port=redis_port, decode_responses=True)
-    msg = ""
-    for t in msag:
-        msg += str(t)
-    rc.publish(redis_topic, msg)
-    print(msg)
+    if len(msag) == 1:
+        rc.publish(redis_topic, str(msag))
+        print(str(msag))
+    else:
+        msg = ""
+        for txt in msag:
+            msg += str(txt)
+        rc.publish(redis_topic, msg)
+        print(msg)
 
 
-def start_tcp_server(ip, port):
-    # create socket
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_address = (ip, port)
-
-    # bind port
-    print("starting listen on ip %s, port %s" % server_address)
-    sock.bind(server_address)
-
-    # get the old receive and send buffer size
-    s_recv_buffer_size = sock.getsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF)
-    print("socket receive buffer size[old] is %d" % s_recv_buffer_size)
-
-    # set a new buffer size
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, RECV_BUF_SIZE)
-
-    # get the new buffer size
-    s_recv_buffer_size = sock.getsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF)
-    print("socket receive buffer size[new] is %d" % s_recv_buffer_size)
-
-    # start listening, allow only one connection
-    try:
-        sock.listen(1)
-    except socket.error:
-        print("fail to listen on port %s" % e)
-        sys.exit(1)
-    while True:
-        print("waiting for connection")
-        client, addr = sock.accept()
-        print("having a connection")
-        break
-
-    while True:
-        print("\r\n")
-        msg = client.recv(16384)
-        msg_de = msg.decode('utf-8')
-        print("recv len is : [%d]" % len(msg_de))
-        print("###############################")
-        print(msg_de)
-        print("###############################")
-
-        if msg_de == 'xxxxx':
-            pass
-            mod()
-
-        if msg_de == 'disconnect': break
-
-        print("send len is : [%d]" % len(msg))
-
-    print("finish test, close connect")
-    client.close()
-    sock.close()
+def sub_handle(info):
+    global mub_flag
+    mub_flag = False
+    time.sleep(1)
+    print(info)
+    msg = info['data']
+    cmd = msg.split("_")
+    loop.stop()
+    if cmd[0] == "setChannel":
+        global c1, c2
+        c1 = cmd[1]
+        c2 = cmd[2]
+        print('receive success ' + c1 + " " + c2)
+        mub_flag = True
+        # loop.run_until_complete(mud(c1, c2))
+    else:
+        print("cmd match error")
 
 
-
+ps = rc.pubsub()
+ps.subscribe(**{"ch2": sub_handle})
+ps.run_in_thread(0.03)
 
 try:
     opts, args = getopt.getopt(sys.argv[1:], 'sc:r:')
@@ -105,6 +73,11 @@ try:
             set_param = True
         elif opt == '-c':
             test_case = arg
+        elif opt == '-v':
+            # global c1, c2
+            c1 = arg[0:1]
+            c2 = args[1:]
+            print(f"c1:{c1}  c2:{c2}")
         elif opt == '-r':
             try:
                 sample_rate = int(arg)
@@ -114,96 +87,13 @@ except getopt.GetoptError:
     pass
 
 cli = Client('opc.tcp://10.82.99.1:8299/epur/')
+
+
 # cli = Client('opc.tcp://localhost:8299/epur/')
 cli.connect()
 cli.load_type_definitions()
 
 
-def mod(c1, c2):
-    redis_send_msg('===========================')
-    redis_send_msg('Mud Test')
-    redis_send_msg('===========================')
-
-    class MudSubHandler(object):
-
-        def __init__(self, data_queue: queue.Queue):
-            self.__data_queue = data_queue
-
-        def datachange_notification(self, node, val, data):
-            if self.__data_queue is not None:
-                if self.__data_queue.full():
-                    self.__data_queue.get()
-                self.__data_queue.put_nowait(val)
-
-    mud_node = cli.nodes.objects.get_child(('2:EPUR', '2:Mud'))
-    mud_status_node = mud_node.get_child('2:DAQStatus')
-
-    mud_data_node = mud_node.get_child('2:WaveformData')
-    mud_queue = queue.Queue(300)
-    mud_handler = MudSubHandler(mud_queue)
-    mud_sub = cli.create_subscription(500, mud_handler)
-    mud_handle = mud_sub.subscribe_data_change(mud_data_node)
-
-    np.set_printoptions(threshold=10)
-
-    if mud_node.call_method('2:SetChannel', c1, c2, sample_rate):
-        redis_send_msg('Set channel setting succeeded.')
-    else:
-        redis_send_msg('Set channel setting failed.')
-    redis_send_msg('---------------------------')
-
-    if mud_node.call_method('2:ControlDAQ', True):
-        redis_send_msg('Start DAQ succeeded.')
-    else:
-        redis_send_msg('Start DAQ failed.')
-    redis_send_msg('---------------------------')
-
-    redis_send_msg('DAQ status:', mud_status_node.get_value())
-    redis_send_msg('---------------------------')
-
-    try:
-        while True:
-            try:
-                wv_data = mud_queue.get(timeout=1)
-                if len(wv_data) >= 9:
-                    tm = struct.unpack('<HBBBBB', wv_data[:7])
-                    redis_send_msg('%d-%02d-%02d %02d:%02d:%02d' % tm)
-                    length, = struct.unpack('<H', wv_data[7:9])
-                    wv_data = wv_data[9:]
-                    if length > 0:
-                        if len(wv_data) == (9 * length):
-                            ai_data = np.frombuffer(wv_data[:8 * length], np.float32)
-                            ai_data.resize(ai_data.size // 2, 2)
-                            redis_send_msg('Pressure data: %d samples per channel.' %
-                                           ai_data.shape[0])
-                            redis_send_msg(ai_data)
-
-                            di_data = np.frombuffer(wv_data[8 * length:], np.uint8)
-                            redis_send_msg('DI data: %d samples.' % di_data.shape[0])
-                            redis_send_msg(di_data)
-                        else:
-                            redis_send_msg('Waveform data receiving error.')
-                    else:
-                        redis_send_msg('No waveform data available.')
-                else:
-                    redis_send_msg('Mud get waveform data failed.')
-
-                redis_send_msg('------------------------')
-            except queue.Empty:
-                pass
-    except KeyboardInterrupt:
-        redis_send_msg('Keyboard interrupted, exiting...')
-
-    if mud_node.call_method('2:ControlDAQ', False):
-        redis_send_msg('Stop DAQ succeeded.')
-    else:
-        redis_send_msg('Stop DAQ failed.')
-    redis_send_msg('---------------------------')
-
-    redis_send_msg('DAQ status:', mud_status_node.get_value())
-    redis_send_msg('---------------------------')
-
-th_tcp = threading.Thread(target=start_tcp_server())
 
 if test_case == 'misc':
     redis_send_msg('===========================')
@@ -402,9 +292,94 @@ if test_case == 'cdl':
     redis_send_msg('---------------------------')
 
 if test_case == 'mud':
-    th_mud = threading.Thread(target=mod(0, 1))
+    redis_send_msg('===========================')
+    redis_send_msg('Mud Test')
+    redis_send_msg('===========================')
 
-    pass
+
+    class MudSubHandler(object):
+
+        def __init__(self, data_queue: queue.Queue):
+            self.__data_queue = data_queue
+
+        def datachange_notification(self, node, val, data):
+            if self.__data_queue is not None:
+                if self.__data_queue.full():
+                    self.__data_queue.get()
+                self.__data_queue.put_nowait(val)
+
+
+    mud_node = cli.nodes.objects.get_child(('2:EPUR', '2:Mud'))
+    mud_status_node = mud_node.get_child('2:DAQStatus')
+
+    mud_data_node = mud_node.get_child('2:WaveformData')
+    mud_queue = queue.Queue(300)
+    mud_handler = MudSubHandler(mud_queue)
+    mud_sub = cli.create_subscription(500, mud_handler)
+    mud_handle = mud_sub.subscribe_data_change(mud_data_node)
+
+    np.set_printoptions(threshold=10)
+
+    if mud_node.call_method('2:SetChannel', c1, c2, sample_rate):
+        redis_send_msg('Set channel setting succeeded.')
+    else:
+        redis_send_msg('Set channel setting failed.')
+    redis_send_msg('---------------------------')
+
+    if mud_node.call_method('2:ControlDAQ', True):
+        redis_send_msg('Start DAQ succeeded.')
+    else:
+        redis_send_msg('Start DAQ failed.')
+    redis_send_msg('---------------------------')
+
+    redis_send_msg('DAQ status:', mud_status_node.get_value())
+    redis_send_msg('---------------------------')
+
+    try:
+        while True:
+            if not mub_flag:
+                break
+            try:
+                wv_data = mud_queue.get(timeout=1)
+                if len(wv_data) >= 9:
+                    tm = struct.unpack('<HBBBBB', wv_data[:7])
+                    redis_send_msg('%d-%02d-%02d %02d:%02d:%02d' % tm)
+                    length, = struct.unpack('<H', wv_data[7:9])
+                    wv_data = wv_data[9:]
+                    if length > 0:
+                        if len(wv_data) == (9 * length):
+                            ai_data = np.frombuffer(wv_data[:8 * length], np.float32)
+                            ai_data.resize(ai_data.size // 2, 2)
+                            redis_send_msg('Pressure data: %d samples per channel,time:%d channel:%d' % (
+                                ai_data.shape[0], int(time.time()), c1))
+                            redis_send_msg(ai_data)
+
+                            di_data = np.frombuffer(wv_data[8 * length:], np.uint8)
+                            redis_send_msg('DI data: %d samples,time:%d channel:%d' % (
+                                di_data.shape[0], int(time.time()), c2))
+                            redis_send_msg(di_data)
+                        else:
+                            redis_send_msg('Waveform data receiving error.')
+                    else:
+                        redis_send_msg('No waveform data available.')
+                else:
+                    redis_send_msg('Mud get waveform data failed.')
+
+                redis_send_msg('------------------------')
+            except queue.Empty:
+                pass
+    except KeyboardInterrupt:
+        redis_send_msg('Keyboard interrupted, exiting...')
+
+    if mud_node.call_method('2:ControlDAQ', False):
+        redis_send_msg('Stop DAQ succeeded.')
+    else:
+        redis_send_msg('Stop DAQ failed.')
+    redis_send_msg('---------------------------')
+
+    redis_send_msg('DAQ status:', mud_status_node.get_value())
+    redis_send_msg('---------------------------')
+
 if test_case == 'depth':
     redis_send_msg('===========================')
     redis_send_msg('Depth Test')
