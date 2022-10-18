@@ -22,7 +22,6 @@ redis_ip = "127.0.0.1"
 redis_port = 6379
 redis_topic = "ch1"
 
-mub_flag = True
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 
@@ -31,6 +30,21 @@ rc = redis.Redis(host=redis_ip, port=redis_port, decode_responses=True)
 c1 = 0
 c2 = 1
 rit_cmd = "hello"
+sn = 'EPU-R-0009'
+
+
+class miscTime:
+    def __int__(self):
+        self.Year = ""
+        self.Month = ""
+        self.Day = ""
+        self.Hour = ""
+        self.Minute = ""
+        self.Second = ""
+
+
+new_ts = miscTime()
+miscTimeFlag = False
 
 
 def redis_send_msg(*msag):
@@ -46,7 +60,7 @@ def redis_send_msg(*msag):
 
 
 try:
-    opts, args = getopt.getopt(sys.argv[1:], 'sc:r:v:')
+    opts, args = getopt.getopt(sys.argv[1:], 'sc:r:v:S:')
     if len(args) > 0:
         rit_cmd = args[0]
         print(rit_cmd)
@@ -60,6 +74,17 @@ try:
             c1 = arg[0:1]
             c2 = arg[1:]
             print(f"c1:{c1}  c2:{c2}")
+        elif opt == '-t':
+            time_misc = arg.split("-")
+            new_ts.Year = time_misc[0]
+            new_ts.Month = time_misc[1]
+            new_ts.Day = time_misc[2]
+            new_ts.Hour = time_misc[3]
+            new_ts.Minute = time_misc[4]
+            new_ts.Second = time_misc[5]
+            miscTimeFlag = True
+        elif opt == "-S":
+            sn = arg
         elif opt == '-r':
             try:
                 sample_rate = int(arg)
@@ -88,7 +113,7 @@ if test_case == 'misc':
     redis_send_msg('Get Time:', misc_node.call_method('2:GetTime'))
 
     if set_param:
-        if misc_node.call_method('2:SetSN', b'EPU-R-0009'):
+        if misc_node.call_method('2:SetSN', sn.encode()):
             redis_send_msg('Set SN succeeded.')
         else:
             redis_send_msg('Set SN failed.')
@@ -105,6 +130,8 @@ if test_case == 'misc':
         ts.Hour = t.tm_hour
         ts.Minute = t.tm_min
         ts.Second = t.tm_sec
+        if miscTimeFlag:
+            ts = new_ts
         redis_send_msg('before:', time.time())
         ret = misc_node.call_method('2:SyncTime', ts)
         redis_send_msg('after:', time.time())
@@ -318,8 +345,6 @@ if test_case == 'mud':
 
     try:
         while True:
-            if not mub_flag:
-                break
             try:
                 wv_data = mud_queue.get(timeout=1)
                 if len(wv_data) >= 9:
