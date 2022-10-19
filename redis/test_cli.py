@@ -22,9 +22,6 @@ redis_ip = "127.0.0.1"
 redis_port = 6379
 redis_topic = "ch1"
 
-loop = asyncio.new_event_loop()
-asyncio.set_event_loop(loop)
-
 rc = redis.Redis(host=redis_ip, port=redis_port, decode_responses=True)
 
 c1 = 0
@@ -60,39 +57,44 @@ def redis_send_msg(*msag):
 
 
 try:
-    opts, args = getopt.getopt(sys.argv[1:], 'sc:r:v:S:')
+    opts, args = getopt.getopt(sys.argv[1:], 'sc:r:v:t:S:')
     if len(args) > 0:
         rit_cmd = args[0]
-        print(rit_cmd)
+        redis_send_msg(rit_cmd)
     for opt, arg in opts:
         if opt == '-s':
             set_param = True
         elif opt == '-c':
             test_case = arg
-            print("-c test_case:" + test_case)
+            redis_send_msg("-c test_case:" + test_case)
         elif opt == '-v':
-            c1 = arg[0:1]
-            c2 = arg[1:]
-            print(f"c1:{c1}  c2:{c2}")
+            try:
+                c1 = arg[0:1]
+                c2 = arg[1:]
+                redis_send_msg(f"c1:{c1}  c2:{c2}")
+            except ValueError:
+                redis_send_msg('Channel cmd value error')
         elif opt == '-t':
-            time_misc = arg.split("-")
-            new_ts.Year = time_misc[0]
-            new_ts.Month = time_misc[1]
-            new_ts.Day = time_misc[2]
-            new_ts.Hour = time_misc[3]
-            new_ts.Minute = time_misc[4]
-            new_ts.Second = time_misc[5]
-            miscTimeFlag = True
+            try:
+                time_misc = arg.split("-")
+                new_ts.Year = time_misc[0]
+                new_ts.Month = time_misc[1]
+                new_ts.Day = time_misc[2]
+                new_ts.Hour = time_misc[3]
+                new_ts.Minute = time_misc[4]
+                new_ts.Second = time_misc[5]
+                miscTimeFlag = True
+            except ValueError as e:
+                redis_send_msg("miscTime cmd value error:", e)
         elif opt == "-S":
             sn = arg
         elif opt == '-r':
             try:
                 sample_rate = int(arg)
             except ValueError:
-                pass
-except getopt.GetoptError:
-    print('GetoptError')
-    pass
+                redis_send_msg("sample_rate cmd value error")
+except getopt.GetoptErrorc as e:
+    redis_send_msg('Get-opt Error:', e)
 
 cli = Client('opc.tcp://10.82.99.1:8299/epur/')
 
