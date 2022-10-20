@@ -28,8 +28,10 @@ c1 = 0
 c2 = 1
 rit_cmd = "hello"
 sn = 'EPU-R-0009'
+depth_channel = 0
 
 
+# misc时间结构体
 class miscTime:
     def __int__(self):
         self.Year = ""
@@ -44,6 +46,7 @@ new_ts = miscTime()
 miscTimeFlag = False
 
 
+# redis消息发布
 def redis_send_msg(*msag):
     if len(msag) == 1:
         rc.publish(redis_topic, str(msag[0]))
@@ -57,8 +60,9 @@ def redis_send_msg(*msag):
 
 
 try:
-    opts, args = getopt.getopt(sys.argv[1:], 'sc:r:v:t:S:')
+    opts, args = getopt.getopt(sys.argv[1:], 'sc:r:v:S:n:')
     if len(args) > 0:
+        # rit参数修改
         rit_cmd = args[0]
         redis_send_msg(rit_cmd)
     for opt, arg in opts:
@@ -68,33 +72,35 @@ try:
             test_case = arg
             redis_send_msg("-c test_case:" + test_case)
         elif opt == '-v':
-            try:
-                c1 = arg[0:1]
-                c2 = arg[1:]
-                redis_send_msg(f"c1:{c1}  c2:{c2}")
-            except ValueError:
-                redis_send_msg('Channel cmd value error')
+            # 通道赋值
+            c1 = arg[0:1]
+            c2 = arg[1:]
+            depth_channel = int(arg[0:1])
+            redis_send_msg(f"c1:{c1}  c2:{c2}")
         elif opt == '-t':
-            try:
-                time_misc = arg.split("-")
-                new_ts.Year = time_misc[0]
-                new_ts.Month = time_misc[1]
-                new_ts.Day = time_misc[2]
-                new_ts.Hour = time_misc[3]
-                new_ts.Minute = time_misc[4]
-                new_ts.Second = time_misc[5]
-                miscTimeFlag = True
-            except ValueError as e:
-                redis_send_msg("miscTime cmd value error:", e)
-        elif opt == "-S":
+            # misc时间赋值
+            time_misc = arg.split("-")
+            new_ts.Year = time_misc[0]
+            new_ts.Month = time_misc[1]
+            new_ts.Day = time_misc[2]
+            new_ts.Hour = time_misc[3]
+            new_ts.Minute = time_misc[4]
+            new_ts.Second = time_misc[5]
+            miscTimeFlag = True
+        elif opt == '-S':
+            # sn赋值
             sn = arg
+        elif opt == '-n':
+            #  namur通道修改
+            depth_channel = int(arg)
         elif opt == '-r':
             try:
                 sample_rate = int(arg)
             except ValueError:
-                redis_send_msg("sample_rate cmd value error")
-except getopt.GetoptErrorc as e:
-    redis_send_msg('Get-opt Error:', e)
+                pass
+except getopt.GetoptError:
+    redis_send_msg('GetoptError')
+    pass
 
 cli = Client('opc.tcp://10.82.99.1:8299/epur/')
 
@@ -176,9 +182,9 @@ if test_case == 'pump':
 
     chn0 = get_ua_class('PumpChannelStruct')()
     chn1 = get_ua_class('PumpChannelStruct')()
-    chn0.Channel = int(c1)
+    chn0.Channel = 0
     chn0.Line = 0
-    chn1.Channel = int(c2)
+    chn1.Channel = 1
     chn1.Line = 0
     if pump_node.call_method('2:SetChannels', chn0, chn1):
         redis_send_msg('Set channels succeeded.')
@@ -414,7 +420,7 @@ if test_case == 'depth':
     depth_sub = cli.create_subscription(500, depth_handler)
     depth_handle = depth_sub.subscribe_data_change(depth_measurements_node)
 
-    if depth_node.call_method('2:SetMainChannel', 0, False):
+    if depth_node.call_method('2:SetMainChannel', depth_channel, False):
         redis_send_msg('Set main channel succeeded.')
     else:
         redis_send_msg('Set main channel failed.')
