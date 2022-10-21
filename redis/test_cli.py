@@ -73,9 +73,8 @@ try:
             redis_send_msg("-c test_case:" + test_case)
         elif opt == '-v':
             # 通道赋值
-            c1 = arg[0:1]
-            c2 = arg[1:]
-            depth_channel = int(arg[0:1])
+            c1 = int(arg[0:1])
+            c2 = int(arg[1:])
             redis_send_msg(f"c1:{c1}  c2:{c2}")
         elif opt == '-t':
             # misc时间赋值
@@ -336,7 +335,7 @@ if test_case == 'mud':
 
     np.set_printoptions(threshold=10)
 
-    if mud_node.call_method('2:SetChannel', int(c1), int(c2), sample_rate):
+    if mud_node.call_method('2:SetChannel', c1, c2, sample_rate):
         redis_send_msg('Set channel setting succeeded.')
     else:
         redis_send_msg('Set channel setting failed.')
@@ -420,7 +419,7 @@ if test_case == 'depth':
     depth_sub = cli.create_subscription(500, depth_handler)
     depth_handle = depth_sub.subscribe_data_change(depth_measurements_node)
 
-    if depth_node.call_method('2:SetMainChannel', depth_channel, False):
+    if depth_node.call_method('2:SetMainChannel', c1, False):
         redis_send_msg('Set main channel succeeded.')
     else:
         redis_send_msg('Set main channel failed.')
